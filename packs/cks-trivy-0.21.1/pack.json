@@ -13,5 +13,16 @@
     "displayName": "Trivy",    
     "layer":"addon",
     "name": "trivy",
-    "version": "0.21.1"
+    "version": "0.21.1",
+    "constraints": {
+      "dependencies": [        
+        {
+          "packName": "kubernetes",
+          "layer": "k8s",
+          "minVersion": "1.27",
+          "maxVersion": "",
+          "type": "optional"
+        }
+      ]
+    }
   }
