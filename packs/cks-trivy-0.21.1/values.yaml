@@ -2,6 +2,13 @@ pack:
   #The namespace (on the target cluster) to install this chart
   #When not found, a new namespace will be created
   namespace: "trivy"
+  content:
+    images:
+      - image: docker.io/aquasec/trivy:0.21.1       
+    charts:
+      - repo: https://github.com/aquasecurity/trivy
+        name: trivy
+        version: 0.21.1  
 
 charts:
   trivy:
@@ -13,7 +20,7 @@ charts:
       repository: aquasec/trivy
       # tag is an override of the image tag, which is by default set by the
       # appVersion field in Chart.yaml.
-      tag: ""
+      tag: "0.21.1"
       pullPolicy: IfNotPresent
       pullSecret: ""
 
