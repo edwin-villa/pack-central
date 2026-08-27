@@ -46,54 +46,71 @@ This is the initial release of this pack, so there are no prior pack versions to
 
 Add this pack as a layer in an [add-on cluster profile](https://docs.spectrocloud.com/profiles/cluster-profiles/create-cluster-profiles/create-addon-profile/). The default values work for most clusters without any changes.
 
-If your cluster uses an overlay network that prevents the API server from reaching the Metrics Server pod directly (a common case on EKS/AKS/GKE), enable host networking:
-
-```yaml
-charts:
-  metrics-server:
-    hostNetwork:
-      enabled: true
-```
-
-```yaml
-charts:
-  metrics-server:
-    apiService:
-      create: false
-    serviceAccount:
-      create: true
-```
-
 Once the cluster reconciles, confirm Metrics Server is running and serving metrics:
 
-```shell
+```powershell
 kubectl get pods -n kube-system -l app.kubernetes.io/name=metrics-server
 kubectl top nodes
 kubectl top pods -A
 ```
 
-To use Metrics Server with the Horizontal Pod Autoscaler, create an `HorizontalPodAutoscaler` resource that targets your workload:
 
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: example-app
-  namespace: default
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: example-app
-  minReplicas: 1
-  maxReplicas: 5
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
+## Known Issues on Managed Kubernetes
+
+### EKS / AKS / GKE: Metrics Server conflict
+
+These managed Kubernetes distributions deploy their own Metrics Server. When Spectro Cloud provisions a cluster, it also deploys an older version (chart `3.8.4`, appVersion `0.9.0-spectro`). This creates a conflict with this pack.
+
+**Symptoms:**
+- Pack stuck at "AddOnDeploying"
+- Error: `ClusterRole "system:metrics-server-aggregated-reader" exists and cannot be imported`
+
+**Resolution:**
+
+```powershell
+# 1. Find the Spectro Cloud namespace with the old release
+helm list --all-namespaces | findstr metrics
+
+# 2. Uninstall the old release (use the namespace from step 1)
+helm uninstall metrics-server -n <NAMESPACE>
+```
+
+Spectro Cloud will automatically redeploy your pack (chart `3.13.1`) with `apiService.create: true` (the default). No additional steps are required.
+
+> [!NOTE]
+> The default value `apiService.create: true` is required for `kubectl top` and HPA to work. Do not set it to `false` unless you need to coexist with another metrics-server installation (not recommended).
+
+## HPA Test (PowerShell)
+
+To verify Metrics Server works with the Horizontal Pod Autoscaler:
+
+```powershell
+# 1. Create a deployment
+kubectl create deployment example-app --image=registry.k8s.io/hpa-example --replicas=1 -n default
+kubectl set resources deployment example-app --requests=cpu=200m --limits=cpu=500m
+
+# 2. Expose the service
+kubectl expose deployment example-app --port=80 --target-port=80
+
+# 3. Create the HPA
+kubectl autoscale deployment example-app --cpu-percent=70 --min=1 --max=5
+
+# 4. Verify HPA is ready
+kubectl get hpa example-app
+# Expected: TARGETS cpu: 0%/70%, REPLICAS 1
+
+# 5. Generate CPU load (run in one terminal)
+kubectl run load-generator --image=busybox --rm -i --tty --restart=Never -- /bin/sh -c "while true; do wget -q -O- http://example-app; done"
+
+# 6. Watch scaling (in another terminal)
+kubectl get pods -l app=example-app --watch
+kubectl get hpa example-app
+# Expected: REPLICAS scales from 1 to 5
+
+# 7. Clean up
+kubectl delete hpa example-app
+kubectl delete deployment example-app
+kubectl delete service example-app
 ```
 
 
